@@ -76,6 +76,89 @@ def run_setup(args, variable):
 def multiple_tickers():
     return NotImplementedError
 
+def DCF(ticker, ev_statement, income_statement, balance_statement, cashflow_statement, discount_rate, forecast, earnings_growth_rate, cap_ex_growth_rate, perpetual_growth_rate):
+    enterprise_val = enterprise_value(income_statement, cashflow_statement, balance_statement, forecast, discount_rate, earnings_growth_rate, cap_ex_growth_rate, perpetual_growth_rate)
+
+    equity_val, share_price = equity_value(enterprise_val, ev_statement)
+    print('\nEnterprise Value for {}: ${}.'.format(ticker, '%.2E' % Decimal(str(enterprise_val))), 
+              '\nEquity Value for {}: ${}.'.format(ticker, '%.2E' % Decimal(str(equity_val))),
+           '\nPer share value for {}: ${}.\n'.format(ticker, '%.2E' % Decimal(str(share_price))),
+            '-'*60)
+    return {
+        'date': income_statement[0]['date'],       # statement date used
+        'enterprise_value': enterprise_val,
+        'equity_value': equity_val,
+        'share_price': share_price
+    }
+
+def historical_DCF(ticker, years, forecast, discount_rate, earnings_growth_rate, cap_ex_growth_rate, perpetual_growth_rate, interval = 'annual', apikey = ''):
+    dcfs = {}
+
+    income_statement = get_income_statement(ticker = ticker, period = interval, apikey = apikey)['financials']
+    balance_statement = get_balance_statement(ticker = ticker, period = interval, apikey = apikey)['financials']
+    cashflow_statement = get_cashflow_statement(ticker = ticker, period = interval, apikey = apikey)['financials']
+    enterprise_value_statement = get_EV_statement(ticker = ticker, period = interval, apikey = apikey)['enterpriseValues']
+
+    if interval == 'quarter':
+        intervals = years * 4
+    else:
+        intervals = years
+
+    for interval in range(0, intervals):
+        try:
+            dcf = DCF(ticker, 
+                    enterprise_value_statement[interval],
+                    income_statement[interval:interval+2],        # pass year + 1 bc we need change in working capital
+                    balance_statement[interval:interval+2],
+                    cashflow_statement[interval:interval+2],
+                    discount_rate,
+                    forecast, 
+                    earnings_growth_rate,  
+                    cap_ex_growth_rate, 
+                    perpetual_growth_rate)
+        except IndexError:
+            print('Interval {} unavailable, no historical statement.'.format(interval)) # catch
+        dcfs[dcf['date']] = dcf 
+    
+    return dcfs
+
+data_source = 'kaggle' # alphavantage or kaggle
+
+if data_source == 'alphavantage':
+
+    api_key = '<your API key>'
+
+    # American Airlines stock market prices
+    ticker = "AAL"
+
+    # JSON file with all the stock market data for AAL from the last 20 years
+    url_string = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=%s&outputsize=full&apikey=%s"%(ticker,api_key)
+
+    # Save data to this file
+    file_to_save = 'stock_market_data-%s.csv'%ticker
+    if not os.path.exists(file_to_save):
+        with urllib.request.urlopen(url_string) as url:
+            data = json.loads(url.read().decode())
+            # extract stock market data
+            data = data['Time Series (Daily)']
+            df = pd.DataFrame(columns=['Date','Low','High','Close','Open'])
+            for k,v in data.items():
+                date = dt.datetime.strptime(k, '%Y-%m-%d')
+                data_row = [date.date(),float(v['3. low']),float(v['2. high']),
+                            float(v['4. close']),float(v['1. open'])]
+                df.loc[-1,:] = data_row
+                df.index = df.index + 1
+        print('Data saved to : %s'%file_to_save)        
+        df.to_csv(file_to_save)
+
+    # If the data is already there, just load it from the CSV
+    else:
+        print('File already exists. Loading data from CSV')
+        df = pd.read_csv(file_to_save)
+
+else:
+    df = pd.read_csv(os.path.join('Stocks','hpq.us.txt'),delimiter=',',usecols=['Date','Open','High','Low','Close'])
+    print('Loaded data from the Kaggle repository')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
