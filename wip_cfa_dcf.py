@@ -125,6 +125,9 @@ def historical_DCF(ticker, years, forecast, discount_rate, earnings_growth_rate,
 def ulFCF(ebit, tax_rate, non_cash_charges, cwc, cap_ex):
     return ebit * (1-tax_rate) + non_cash_charges + cwc + cap_ex
 
+def equity_value(enterprise_value, enterprise_value_statement):
+    return equity_val,  share_price
+
 data_source = 'kaggle' # alphavantage or kaggle
 
 if data_source == 'alphavantage':
